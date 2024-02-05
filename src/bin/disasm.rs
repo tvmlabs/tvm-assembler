@@ -176,7 +176,7 @@ fn subcommand_text(filename: String, stateinit: bool, full: bool) -> Status {
         println!("warning: boc contains {} roots, getting the first one", roots_count)
     }
 
-    let root0 = roots.get(0).ok_or_else(|| anyhow::anyhow!("failed to get root 0"))?;
+    let root0 = roots.first().ok_or_else(|| anyhow::anyhow!("failed to get root 0"))?;
     let cell = if stateinit { root0.reference(0)? } else { root0.clone() };
 
     print!("{}", disasm_ex(&mut SliceData::load_cell(cell)?, !full)?);

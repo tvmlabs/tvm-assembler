@@ -56,7 +56,7 @@ fn print_code_dict(cell: &Cell, key_size: usize, indent: &str) -> Result<String>
 }
 
 fn print_dictpushconst(insn: &Instruction, indent: &str) -> String {
-    let key_length = if let Some(InstructionParameter::Length(l)) = insn.params().get(0) {
+    let key_length = if let Some(InstructionParameter::Length(l)) = insn.params().first() {
         *l
     } else {
         unreachable!()
@@ -139,7 +139,7 @@ impl Code {
                     }
                     "IMPLICIT-JMP" => {
                         if let Some(InstructionParameter::Code { code, cell }) =
-                            insn.params().get(0)
+                            insn.params().first()
                         {
                             let hash = cell.as_ref().unwrap().repr_hash().to_hex_string();
                             text += &format!(".cell {{ ;; #{}\n", hash);
@@ -170,7 +170,7 @@ impl Code {
 }
 
 fn print_insn_params(
-    params: &Vec<InstructionParameter>,
+    params: &[InstructionParameter],
     indent: &str,
     full: bool,
     bytecode_width: usize,
