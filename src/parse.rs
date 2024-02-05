@@ -1,21 +1,21 @@
-/*
-* Copyright (C) 2019-2021 TON Labs. All Rights Reserved.
-*
-* Licensed under the SOFTWARE EVALUATION License (the "License"); you may not use
-* this file except in compliance with the License.
-*
-* Unless required by applicable law or agreed to in writing, software
-* distributed under the License is distributed on an "AS IS" BASIS,
-* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-* See the License for the specific TON DEV software governing permissions and
-* limitations under the License.
-*/
+// Copyright (C) 2019-2021 TON Labs. All Rights Reserved.
+//
+// Licensed under the SOFTWARE EVALUATION License (the "License"); you may not
+// use this file except in compliance with the License.
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific TON DEV software governing permissions and
+// limitations under the License.
+
+use std::cmp::PartialOrd;
+use std::ops::Bound;
+use std::ops::Range;
+use std::ops::RangeBounds;
 
 use num::Num;
-use std::{
-    cmp::PartialOrd,
-    ops::{Bound, Range, RangeBounds}
-};
+
 use super::errors::ParameterError;
 
 fn parse_range<T, R>(range: R) -> impl Fn(&str) -> Result<T, ParameterError>
@@ -138,12 +138,14 @@ pub(super) fn parse_register(
         Err(ParameterError::UnexpectedType)
     } else {
         match register[1..].parse::<isize>() {
-            Ok(number) => if (number < range.start) || (number >= range.end) {
-                Err(ParameterError::OutOfRange)
-            } else {
-                Ok(number)
-            },
-            Err(_e) => Err(ParameterError::UnexpectedType)
+            Ok(number) => {
+                if (number < range.start) || (number >= range.end) {
+                    Err(ParameterError::OutOfRange)
+                } else {
+                    Ok(number)
+                }
+            }
+            Err(_e) => Err(ParameterError::UnexpectedType),
         }
     }
 }
@@ -160,7 +162,11 @@ pub fn parse_slice(slice: &str, bits: usize) -> Result<Vec<u8>, ParameterError> 
     }
 }
 
-pub fn parse_slice_base(slice: &str, mut bits: usize, base: u32) -> Result<Vec<u8>, ParameterError> {
+pub fn parse_slice_base(
+    slice: &str,
+    mut bits: usize,
+    base: u32,
+) -> Result<Vec<u8>, ParameterError> {
     debug_assert!(bits < 8, "it is offset to get slice parsed");
     let mut acc = 0u8;
     let mut data = vec![];
@@ -215,14 +221,9 @@ pub(super) fn parse_stack_register_u4_minus_two(par: &str) -> Result<u8, Paramet
 }
 
 pub(super) fn parse_plduz_parameter(par: &str) -> Result<u8, ParameterError> {
-    (parse_range(32u16..=256))(par)
-        .and_then(|c| {
-            if c % 32 == 0 {
-                Ok(((c / 32) - 1) as u8)
-            } else {
-                Err(ParameterError::OutOfRange)
-            }
-        })
+    (parse_range(32u16..=256))(par).and_then(|c| {
+        if c % 32 == 0 { Ok(((c / 32) - 1) as u8) } else { Err(ParameterError::OutOfRange) }
+    })
 }
 
 pub(super) fn parse_string(arg: &str) -> Vec<u8> {
@@ -231,7 +232,7 @@ pub(super) fn parse_string(arg: &str) -> Vec<u8> {
         string.remove(0);
         let res = hex::decode(string);
         if let Ok(res) = res {
-            return res
+            return res;
         }
     }
     Vec::from(arg)

@@ -1,46 +1,51 @@
-/*
-* Copyright (C) 2019-2021 TON Labs. All Rights Reserved.
-*
-* Licensed under the SOFTWARE EVALUATION License (the "License"); you may not use
-* this file except in compliance with the License.
-*
-* Unless required by applicable law or agreed to in writing, software
-* distributed under the License is distributed on an "AS IS" BASIS,
-* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-* See the License for the specific TON DEV software governing permissions and
-* limitations under the License.
-*/
+// Copyright (C) 2019-2021 TON Labs. All Rights Reserved.
+//
+// Licensed under the SOFTWARE EVALUATION License (the "License"); you may not
+// use this file except in compliance with the License.
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific TON DEV software governing permissions and
+// limitations under the License.
 
-use std::{collections::HashMap, ops::RangeInclusive};
-use ton_types::{Cell, SliceData, BuilderData};
+use std::collections::HashMap;
+use std::ops::RangeInclusive;
 
 pub use debug::DbgInfo;
+use tvm_types::BuilderData;
+use tvm_types::Cell;
+use tvm_types::SliceData;
 
 mod errors;
-pub use errors::{
-    CompileError, OperationError, ParameterError, Position,
-    ToOperationParameterError,
-};
+pub use errors::CompileError;
+pub use errors::OperationError;
+pub use errors::ParameterError;
+pub use errors::Position;
+pub use errors::ToOperationParameterError;
 
+mod complex;
+mod convert;
 mod debug;
 mod macros;
 mod parse;
-mod complex;
 mod simple;
-mod convert;
 
 mod writer;
-pub use writer::{Units, Unit};
 pub use debug::DbgPos;
+pub use writer::Unit;
+pub use writer::Units;
 
 pub mod disasm;
 
 // Basic types *****************************************************************
 /// Operation Compilation result
 type CompileResult = Result<(), OperationError>;
-type CompileHandler = fn(&mut Engine, &[&str], destination: &mut Units, pos: DbgPos) -> CompileResult;
+type CompileHandler =
+    fn(&mut Engine, &[&str], destination: &mut Units, pos: DbgPos) -> CompileResult;
 
-// CompileError::Operation handlers ***********************************************************
+// CompileError::Operation handlers
+// ***********************************************************
 trait EnsureParametersCountInRange {
     fn assert_empty(&self) -> Result<(), OperationError>;
     fn assert_len(&self, _n: usize) -> Result<(), OperationError>;
@@ -70,8 +75,7 @@ impl<T> EnsureParametersCountInRange for [T] {
 // Command compilation context ************************************************
 
 #[derive(Default)]
-struct CommandContext
-{
+struct CommandContext {
     operation: String,
     line_no_cmd: usize,
     char_no_cmd: usize,
@@ -81,22 +85,28 @@ struct CommandContext
 }
 
 impl CommandContext {
-    fn new(operation: String, char_no_cmd: usize, line_no_cmd: usize, rule_option: Option<CompileHandler>) -> Self {
-        Self {
-            operation,
-            line_no_cmd,
-            char_no_cmd,
-            line_no_par: 0,
-            char_no_par: 0,
-            rule_option,
-        }
+    fn new(
+        operation: String,
+        char_no_cmd: usize,
+        line_no_cmd: usize,
+        rule_option: Option<CompileHandler>,
+    ) -> Self {
+        Self { operation, line_no_cmd, char_no_cmd, line_no_par: 0, char_no_par: 0, rule_option }
     }
+
     fn abort<X>(&self, error: OperationError) -> Result<X, CompileError> {
-        Err(CompileError::operation(self.line_no_cmd, self.char_no_cmd, self.operation.clone(), error))
+        Err(CompileError::operation(
+            self.line_no_cmd,
+            self.char_no_cmd,
+            self.operation.clone(),
+            error,
+        ))
     }
+
     fn has_command(&self) -> bool {
         self.rule_option.is_some()
     }
+
     fn compile(
         &mut self,
         destination: &mut Units,
@@ -105,29 +115,32 @@ impl CommandContext {
     ) -> Result<(), CompileError> {
         let rule = match self.rule_option.as_ref() {
             Some(rule) => rule,
-            None => return Ok(())
+            None => return Ok(()),
         };
         let (line_no, char_no) = engine.set_pos(self.line_no_par, self.char_no_par);
         let mut n = par.len();
         loop {
             let par = par[0..n].iter().map(|p| p.token).collect::<Vec<_>>();
-            let pos = engine.dbgpos.clone()
-                .unwrap_or_else(|| DbgPos { filename: engine.source_name.clone(), line: self.line_no_cmd });
+            let pos = engine.dbgpos.clone().unwrap_or_else(|| DbgPos {
+                filename: engine.source_name.clone(),
+                line: self.line_no_cmd,
+            });
             match rule(engine, &par, destination, pos) {
                 Ok(_) => break,
                 Err(OperationError::TooManyParameters) if n != 0 => {
                     n -= 1;
                 }
-                Err(e) => return self.abort(e)
+                Err(e) => return self.abort(e),
             }
         }
         engine.set_pos(line_no, char_no);
         self.rule_option = None;
         // detecting some errors here
-        if n > 1 && self.operation != "IFREFELSEREF" { // the only insn taking two blocks without comma between
+        if n > 1 && self.operation != "IFREFELSEREF" {
+            // the only insn taking two blocks without comma between
             for token in &par[1..n] {
                 if !token.was_comma {
-                    return Err(CompileError::syntax(token.line, token.column, "Missing comma"))
+                    return Err(CompileError::syntax(token.line, token.column, "Missing comma"));
                 }
             }
         }
@@ -140,12 +153,10 @@ impl CommandContext {
                     position,
                     self.operation.clone(),
                     OperationError::TooManyParameters,
-                ))
+                ));
             } else {
                 // or CompileError::Syntax "missing comma"
-                return Err(CompileError::UnknownOperation(
-                    position, token.token.into()
-                ))
+                return Err(CompileError::UnknownOperation(position, token.token.into()));
             }
         }
         Ok(())
@@ -294,7 +305,9 @@ impl Engine {
                 }
             } else if ch == ',' {
                 if !expect_comma {
-                    return Err(CompileError::syntax(y, x, ",").with_filename(self.source_name.clone()))
+                    return Err(
+                        CompileError::syntax(y, x, ",").with_filename(self.source_name.clone())
+                    );
                 }
                 acc = (new_s1, new_s1);
                 expect_comma = false;
@@ -304,7 +317,9 @@ impl Engine {
                 }
             } else if ch == '{' {
                 if expect_comma || !command_ctx.has_command() {
-                    return Err(CompileError::syntax(y, x, ch).with_filename(self.source_name.clone()))
+                    return Err(
+                        CompileError::syntax(y, x, ch).with_filename(self.source_name.clone())
+                    );
                 }
                 acc = (new_s1, new_s1);
                 in_block = 1;
@@ -312,18 +327,29 @@ impl Engine {
                 command_ctx.char_no_par = self.char_no;
                 continue;
             } else if ch == '}' {
-                return Err(CompileError::syntax(y, x, ch).with_filename(self.source_name.clone()))
-            } else if ch.is_ascii_alphanumeric() || (ch == '-') || (ch == '_') || (ch == '.') ||
-                (ch == '/') || (ch == '\\') || (ch == '$') || (ch == '@') {
+                return Err(CompileError::syntax(y, x, ch).with_filename(self.source_name.clone()));
+            } else if ch.is_ascii_alphanumeric()
+                || (ch == '-')
+                || (ch == '_')
+                || (ch == '.')
+                || (ch == '/')
+                || (ch == '\\')
+                || (ch == '$')
+                || (ch == '@')
+            {
                 acc = (s0, new_s1);
-                if s0 == s1 { //start of new token
+                if s0 == s1 {
+                    // start of new token
                     was_comma = comma_found;
                     comma_found = false;
                     expect_comma = true
                 }
                 continue;
-            } else { // TODO: (message for the owner: please write descriptive explanation)
-                return Err(CompileError::syntax(y, x, "Bad char").with_filename(self.source_name.clone()))
+            } else {
+                // TODO: (message for the owner: please write descriptive explanation)
+                return Err(
+                    CompileError::syntax(y, x, "Bad char").with_filename(self.source_name.clone())
+                );
             }
             // Token extracted
             let token = source[s0..s1].to_ascii_uppercase();
@@ -342,14 +368,19 @@ impl Engine {
                     if command_ctx.has_command() {
                         par.push(Token::new(y, x, &source[s0..s1], was_comma));
                         was_comma = false;
-                        continue
+                        continue;
                     } else {
-                        return Err(CompileError::unknown(y, x, &token).with_filename(self.source_name.clone()))
+                        return Err(CompileError::unknown(y, x, &token)
+                            .with_filename(self.source_name.clone()));
                     }
                 }
                 Some(&new_rule) => {
                     if !toplevel && token == ".FRAGMENT" {
-                        return Err(CompileError::syntax(y, x, ".fragment can be defined at toplevel scope only"))
+                        return Err(CompileError::syntax(
+                            y,
+                            x,
+                            ".fragment can be defined at toplevel scope only",
+                        ));
                     }
                     match command_ctx.compile(&mut ret, &mut par, self) {
                         Ok(_) => {
@@ -358,15 +389,22 @@ impl Engine {
                             was_comma = false;
                             was_newline = newline_found;
                         }
-                        Err(e @ CompileError::Operation(_, _, OperationError::MissingRequiredParameters)) => {
-                            if was_newline { // it seems realy new command - rturn correct missing params error
-                                return Err(e)
+                        Err(
+                            e @ CompileError::Operation(
+                                _,
+                                _,
+                                OperationError::MissingRequiredParameters,
+                            ),
+                        ) => {
+                            if was_newline {
+                                // it seems realy new command - rturn correct missing params error
+                                return Err(e);
                             } else {
                                 par.push(Token::new(y, x, &source[s0..s1], was_comma));
                                 was_comma = false;
                             }
                         }
-                        Err(e) => return Err(e)
+                        Err(e) => return Err(e),
                     }
                 }
             }
@@ -374,11 +412,11 @@ impl Engine {
         // Compile last pending command if any
         command_ctx.compile(&mut ret, &mut par, self)?;
         if in_block != 0 {
-            return Err(CompileError::syntax(self.line_no, 0, "Missing }").with_filename(self.source_name.clone()))
+            return Err(CompileError::syntax(self.line_no, 0, "Missing }")
+                .with_filename(self.source_name.clone()));
         }
         Ok(ret)
     }
-
 }
 
 pub fn compile_code_to_builder(code: &str) -> Result<BuilderData, CompileError> {
@@ -390,7 +428,7 @@ pub fn compile_code(code: &str) -> Result<SliceData, CompileError> {
     let code = compile_code_to_builder(code)?;
     match SliceData::load_builder(code) {
         Ok(code) => Ok(code),
-        Err(_) => Err(CompileError::unknown(0, 0, "failure while convert BuilderData to cell"))
+        Err(_) => Err(CompileError::unknown(0, 0, "failure while convert BuilderData to cell")),
     }
 }
 
@@ -399,11 +437,14 @@ pub fn compile_code_to_cell(code: &str) -> Result<Cell, CompileError> {
     let code = compile_code_to_builder(code)?;
     match code.into_cell() {
         Ok(code) => Ok(code),
-        Err(_) => Err(CompileError::unknown(0, 0, "failure while convert BuilderData to cell"))
+        Err(_) => Err(CompileError::unknown(0, 0, "failure while convert BuilderData to cell")),
     }
 }
 
-pub fn compile_code_debuggable(source: &str, source_name: &str) -> Result<(SliceData, DbgInfo), CompileError> {
+pub fn compile_code_debuggable(
+    source: &str,
+    source_name: &str,
+) -> Result<(SliceData, DbgInfo), CompileError> {
     log::trace!(target: "tvm", "begin compile\n");
     let (builder, dbg) = Engine::new(source_name).compile_toplevel(source)?.finalize();
     let cell = builder.into_cell().unwrap();
@@ -412,7 +453,6 @@ pub fn compile_code_debuggable(source: &str, source_name: &str) -> Result<(Slice
             let dbg_info = DbgInfo::from(cell, dbg);
             Ok((code, dbg_info))
         }
-        Err(_) => Err(CompileError::unknown(0, 0, "failure while convert BuilderData to cell"))
+        Err(_) => Err(CompileError::unknown(0, 0, "failure while convert BuilderData to cell")),
     }
 }
-

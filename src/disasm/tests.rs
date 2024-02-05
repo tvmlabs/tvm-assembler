@@ -1,22 +1,24 @@
-/*
- * Copyright 2018-2023 TON DEV SOLUTIONS LTD.
- *
- * Licensed under the SOFTWARE EVALUATION License (the "License"); you may not use
- * this file except in compliance with the License.
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific TON DEV software governing permissions and
- * limitations under the License.
- */
+// Copyright 2018-2023 TON DEV SOLUTIONS LTD.
+//
+// Licensed under the SOFTWARE EVALUATION License (the "License"); you may not
+// use this file except in compliance with the License.
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific TON DEV software governing permissions and
+// limitations under the License.
 
 use failure::format_err;
-use ton_types::{read_boc, write_boc, SliceData, Status};
+use similar::ChangeTag;
+use similar::TextDiff;
+use tvm_types::read_boc;
+use tvm_types::write_boc;
+use tvm_types::SliceData;
+use tvm_types::Status;
 
-use crate::disasm::{disasm, fmt::print_tree_of_cells};
-
-use similar::{ChangeTag, TextDiff};
+use crate::disasm::disasm;
+use crate::disasm::fmt::print_tree_of_cells;
 
 fn cut_asm_hashes(asm: String) -> String {
     let mut out = String::new();
@@ -34,8 +36,7 @@ fn round_trip_test(filename: &str, check_bin: bool) -> Status {
     let bin0 = &std::fs::read(filename)?;
     let toc0 = read_boc(bin0)?.withdraw_single_root()?;
     let mut asm0 = disasm(&mut SliceData::load_cell(toc0.clone())?)?;
-    let toc1 = crate::compile_code_to_cell(&asm0.clone())
-        .map_err(|e| format_err!("{}", e))?;
+    let toc1 = crate::compile_code_to_cell(&asm0.clone()).map_err(|e| format_err!("{}", e))?;
     let mut asm1 = disasm(&mut SliceData::load_cell(toc1.clone())?)?;
 
     if !check_bin {
@@ -55,7 +56,7 @@ fn round_trip_test(filename: &str, check_bin: bool) -> Status {
                 print!("+{}", change);
                 differ = true;
             }
-            _ => ()
+            _ => (),
         }
     }
     assert!(!differ, "roundtrip difference was detected for {}", filename);
@@ -110,18 +111,17 @@ fn fragments() -> Status {
 fn check_code(name: &str) -> Status {
     let inp = std::fs::read_to_string(format!("src/tests/disasm/{}.in", name))?;
     let out = std::fs::read_to_string(format!("src/tests/disasm/{}.out", name))?;
-    let mut code = crate::compile_code(&inp)
-        .map_err(|e| format_err!("{}", e))?;
+    let mut code = crate::compile_code(&inp).map_err(|e| format_err!("{}", e))?;
     let dis = disasm(&mut code)?;
     if dis == out {
-        return Ok(())
+        return Ok(());
     }
     let diff = TextDiff::from_lines(&out, &dis);
     for change in diff.iter_all_changes() {
         match change.tag() {
             ChangeTag::Delete => print!("-{}", change),
             ChangeTag::Insert => print!("+{}", change),
-            _ => ()
+            _ => (),
         }
     }
     Err(format_err!("check failed"))

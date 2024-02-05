@@ -1,31 +1,38 @@
-/*
- * Copyright 2023 TON DEV SOLUTIONS LTD.
- *
- * Licensed under the SOFTWARE EVALUATION License (the "License"); you may not use
- * this file except in compliance with the License.
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific TON DEV software governing permissions and
- * limitations under the License.
- */
+// Copyright 2023 TON DEV SOLUTIONS LTD.
+//
+// Licensed under the SOFTWARE EVALUATION License (the "License"); you may not
+// use this file except in compliance with the License.
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific TON DEV software governing permissions and
+// limitations under the License.
 
 use std::collections::HashMap;
-use ton_types::{Cell, HashmapE, HashmapType, Result, SliceData, fail};
-use super::{
-    types::{Instruction, InstructionParameter, Code},
-    loader::Loader
-};
 
-fn match_dictpushconst_dictugetjmp(pair: &mut [Instruction]) -> Option<&mut Vec<InstructionParameter>> {
+use tvm_types::fail;
+use tvm_types::Cell;
+use tvm_types::HashmapE;
+use tvm_types::HashmapType;
+use tvm_types::Result;
+use tvm_types::SliceData;
+
+use super::loader::Loader;
+use super::types::Code;
+use super::types::Instruction;
+use super::types::InstructionParameter;
+
+fn match_dictpushconst_dictugetjmp(
+    pair: &mut [Instruction],
+) -> Option<&mut Vec<InstructionParameter>> {
     let insn2 = pair.get(1)?.name();
     if insn2 != "DICTUGETJMP" && insn2 != "DICTUGETJMPZ" {
-        return None
+        return None;
     }
     let insn1 = pair.get_mut(0)?;
     if insn1.name() != "DICTPUSHCONST" && insn1.name() != "PFXDICTSWITCH" {
-        return None
+        return None;
     }
     Some(insn1.params_mut())
 }
@@ -41,7 +48,7 @@ impl Code {
     }
 
     fn traverse_code_tree(&mut self, process: fn(&mut Code)) {
-        let mut stack = vec!(self);
+        let mut stack = vec![self];
         while let Some(code) = stack.pop() {
             process(code);
             for insn in code.iter_mut() {
@@ -66,11 +73,9 @@ pub(super) struct DelimitedHashmapE {
 
 impl DelimitedHashmapE {
     pub fn new(cell: Cell, key_size: usize) -> Self {
-        Self {
-            dict: HashmapE::with_hashmap(key_size, Some(cell)),
-            map: HashMap::new(),
-        }
+        Self { dict: HashmapE::with_hashmap(key_size, Some(cell)), map: HashMap::new() }
     }
+
     fn slice_eq_data(lhs: &SliceData, rhs: &SliceData) -> bool {
         let bit_len = lhs.remaining_bits();
         if bit_len != rhs.remaining_bits() {
@@ -83,11 +88,15 @@ impl DelimitedHashmapE {
             }
             offset += 8
         }
-        if (bit_len > offset) && (lhs.get_bits(offset, bit_len - offset).unwrap() != rhs.get_bits(offset, bit_len - offset).unwrap()) {
+        if (bit_len > offset)
+            && (lhs.get_bits(offset, bit_len - offset).unwrap()
+                != rhs.get_bits(offset, bit_len - offset).unwrap())
+        {
             return false;
         }
         true
     }
+
     fn slice_eq_children(lhs: &SliceData, rhs: &SliceData) -> bool {
         let refs_count = lhs.remaining_references();
         if refs_count != rhs.remaining_references() {
@@ -98,18 +107,19 @@ impl DelimitedHashmapE {
             let ref2 = rhs.reference(i).unwrap();
             if ref1.repr_hash() != ref2.repr_hash() {
                 return false;
-            } 
+            }
         }
         true
     }
+
     fn locate(mut slice: SliceData, target: &SliceData, path: Vec<u8>) -> Result<(Vec<u8>, usize)> {
         if Self::slice_eq_children(&slice, target) {
             loop {
                 if Self::slice_eq_data(&slice, target) {
-                    return Ok((path, slice.pos()))
+                    return Ok((path, slice.pos()));
                 }
                 if slice.get_next_bit().is_err() {
-                    break
+                    break;
                 }
             }
         }
@@ -118,17 +128,18 @@ impl DelimitedHashmapE {
             let mut next = path.clone();
             next.push(i as u8);
             if let Ok(v) = Self::locate(child, target, next) {
-                return Ok(v)
+                return Ok(v);
             }
         }
         fail!("not found")
     }
+
     pub fn mark(&mut self) -> Result<()> {
         let dict_slice = SliceData::load_cell_ref(self.dict.data().unwrap())?;
         for entry in self.dict.iter() {
             let (key, mut slice) = entry?;
             let id = SliceData::load_builder(key)?.get_next_int(self.dict.bit_len())?;
-            let loc = Self::locate(dict_slice.clone(), &slice, vec!())?;
+            let loc = Self::locate(dict_slice.clone(), &slice, vec![])?;
             let mut loader = Loader::new(false);
             let code = loader.load(&mut slice, true)?;
             if self.map.insert(loc.0, (id, loc.1, code)).is_some() {
@@ -137,6 +148,7 @@ impl DelimitedHashmapE {
         }
         Ok(())
     }
+
     fn print_impl(&self, cell: &Cell, indent: &str, path: Vec<u8>) -> String {
         let mut text = String::new();
         text += &format!("{}.cell ", indent);
@@ -161,7 +173,8 @@ impl DelimitedHashmapE {
         text += &format!("{}}}\n", indent);
         text
     }
+
     pub fn print(&self, indent: &str) -> String {
-        self.print_impl(self.dict.data().unwrap(), indent, vec!())
+        self.print_impl(self.dict.data().unwrap(), indent, vec![])
     }
 }

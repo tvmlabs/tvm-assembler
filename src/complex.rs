@@ -1,36 +1,43 @@
-/*
-* Copyright (C) 2019-2021 TON Labs. All Rights Reserved.
-*
-* Licensed under the SOFTWARE EVALUATION License (the "License"); you may not use
-* this file except in compliance with the License.
-*
-* Unless required by applicable law or agreed to in writing, software
-* distributed under the License is distributed on an "AS IS" BASIS,
-* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-* See the License for the specific TON DEV software governing permissions and
-* limitations under the License.
-*/
+// Copyright (C) 2019-2021 TON Labs. All Rights Reserved.
+//
+// Licensed under the SOFTWARE EVALUATION License (the "License"); you may not
+// use this file except in compliance with the License.
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific TON DEV software governing permissions and
+// limitations under the License.
 
-use std::collections::{BTreeMap, HashMap};
-use std::{marker::PhantomData, ops::Range};
-use ton_types::{BuilderData, Cell, HashmapE, HashmapType, SliceData, Status};
+use std::collections::BTreeMap;
+use std::collections::HashMap;
+use std::marker::PhantomData;
+use std::ops::Range;
+
 use failure::format_err;
+use num::BigInt;
+use num::Integer;
+use num::Num;
+use tvm_types::BuilderData;
+use tvm_types::Cell;
+use tvm_types::HashmapE;
+use tvm_types::HashmapType;
+use tvm_types::SliceData;
+use tvm_types::Status;
 
-use super::errors::{
-    OperationError, ParameterError,
-};
-
-use super::{
-    Unit, Units, CompileResult, Engine, EnsureParametersCountInRange,
-    convert::to_big_endian_octet_string,
-    errors::ToOperationParameterError,
-    parse::*,
-};
-use num::{BigInt, Num, Integer};
-use crate::{
-    DbgInfo,
-    debug::{DbgPos, DbgNode}
-};
+use super::convert::to_big_endian_octet_string;
+use super::errors::OperationError;
+use super::errors::ParameterError;
+use super::errors::ToOperationParameterError;
+use super::parse::*;
+use super::CompileResult;
+use super::Engine;
+use super::EnsureParametersCountInRange;
+use super::Unit;
+use super::Units;
+use crate::debug::DbgNode;
+use crate::debug::DbgPos;
+use crate::DbgInfo;
 
 trait CommandBehaviourModifier {
     fn modify(code: Vec<u8>) -> Vec<u8>;
@@ -40,7 +47,9 @@ struct Signaling {}
 struct Quiet {}
 
 impl CommandBehaviourModifier for Signaling {
-    fn modify(code: Vec<u8>) -> Vec<u8> { code }
+    fn modify(code: Vec<u8>) -> Vec<u8> {
+        code
+    }
 }
 
 impl CommandBehaviourModifier for Quiet {
@@ -74,17 +83,31 @@ fn compile_with_any_register(
     pos: DbgPos,
 ) -> CompileResult {
     compile_with_register(register, 'S', 0..16, code_stack_short, destination, pos.clone()).or_else(
-        |e| if let OperationError::Parameter(_, ParameterError::UnexpectedType) = e {
-            compile_with_register(register, 'C', 0..16, code_ctrls, destination, pos.clone())
-        } else if let OperationError::Parameter(_, ParameterError::OutOfRange) = e {
-            compile_with_register(register, 'S', 16..256, code_stack_long, destination, pos.clone())
-        } else {
-            Err(e)
-        }
+        |e| {
+            if let OperationError::Parameter(_, ParameterError::UnexpectedType) = e {
+                compile_with_register(register, 'C', 0..16, code_ctrls, destination, pos.clone())
+            } else if let OperationError::Parameter(_, ParameterError::OutOfRange) = e {
+                compile_with_register(
+                    register,
+                    'S',
+                    16..256,
+                    code_stack_long,
+                    destination,
+                    pos.clone(),
+                )
+            } else {
+                Err(e)
+            }
+        },
     )
 }
 
-fn compile_call(_engine: &mut Engine,  par: &[&str], destination: &mut Units, pos: DbgPos) -> CompileResult {
+fn compile_call(
+    _engine: &mut Engine,
+    par: &[&str],
+    destination: &mut Units,
+    pos: DbgPos,
+) -> CompileResult {
     par.assert_len(1)?;
     let number = parse_const_u14(par[0]).parameter("Number")?;
     if number < 256 {
@@ -98,103 +121,178 @@ fn compile_call(_engine: &mut Engine,  par: &[&str], destination: &mut Units, po
     }
 }
 
-fn compile_ref(engine: &mut Engine, par: &[&str], destination: &mut Units, command: &[u8], pos: DbgPos) -> CompileResult {
+fn compile_ref(
+    engine: &mut Engine,
+    par: &[&str],
+    destination: &mut Units,
+    command: &[u8],
+    pos: DbgPos,
+) -> CompileResult {
     if engine.line_no == 0 && engine.char_no == 0 {
         // the case of instruction form without an argument
         return destination.write_command(command, DbgNode::from(pos));
     }
     par.assert_len(1)?;
-    let (cont, dbg) = engine
-        .compile(par[0])
-        .map_err(|e| OperationError::Nested(Box::new(e)))?
-        .finalize();
-    let dbg2 = DbgNode::from_ext(pos, vec!(dbg));
-    destination.write_composite_command(command, vec!(cont), dbg2)
+    let (cont, dbg) =
+        engine.compile(par[0]).map_err(|e| OperationError::Nested(Box::new(e)))?.finalize();
+    let dbg2 = DbgNode::from_ext(pos, vec![dbg]);
+    destination.write_composite_command(command, vec![cont], dbg2)
 }
 
-fn compile_callref(engine: &mut Engine, par: &[&str], destination: &mut Units, pos: DbgPos) -> CompileResult {
+fn compile_callref(
+    engine: &mut Engine,
+    par: &[&str],
+    destination: &mut Units,
+    pos: DbgPos,
+) -> CompileResult {
     compile_ref(engine, par, destination, &[0xDB, 0x3C], pos)
 }
 
-fn compile_jmpref(engine: &mut Engine, par: &[&str], destination: &mut Units, pos: DbgPos) -> CompileResult {
+fn compile_jmpref(
+    engine: &mut Engine,
+    par: &[&str],
+    destination: &mut Units,
+    pos: DbgPos,
+) -> CompileResult {
     compile_ref(engine, par, destination, &[0xDB, 0x3D], pos)
 }
 
-fn compile_ifref(engine: &mut Engine, par: &[&str], destination: &mut Units, pos: DbgPos) -> CompileResult {
+fn compile_ifref(
+    engine: &mut Engine,
+    par: &[&str],
+    destination: &mut Units,
+    pos: DbgPos,
+) -> CompileResult {
     compile_ref(engine, par, destination, &[0xE3, 0x00], pos)
 }
 
-fn compile_ifnotref(engine: &mut Engine, par: &[&str], destination: &mut Units, pos: DbgPos) -> CompileResult {
+fn compile_ifnotref(
+    engine: &mut Engine,
+    par: &[&str],
+    destination: &mut Units,
+    pos: DbgPos,
+) -> CompileResult {
     compile_ref(engine, par, destination, &[0xE3, 0x01], pos)
 }
 
-fn compile_ifjmpref(engine: &mut Engine, par: &[&str], destination: &mut Units, pos: DbgPos) -> CompileResult {
+fn compile_ifjmpref(
+    engine: &mut Engine,
+    par: &[&str],
+    destination: &mut Units,
+    pos: DbgPos,
+) -> CompileResult {
     compile_ref(engine, par, destination, &[0xE3, 0x02], pos)
 }
 
-fn compile_ifnotjmpref(engine: &mut Engine, par: &[&str], destination: &mut Units, pos: DbgPos) -> CompileResult {
+fn compile_ifnotjmpref(
+    engine: &mut Engine,
+    par: &[&str],
+    destination: &mut Units,
+    pos: DbgPos,
+) -> CompileResult {
     compile_ref(engine, par, destination, &[0xE3, 0x03], pos)
 }
 
-fn compile_ifrefelse(engine: &mut Engine, par: &[&str], destination: &mut Units, pos: DbgPos) -> CompileResult {
+fn compile_ifrefelse(
+    engine: &mut Engine,
+    par: &[&str],
+    destination: &mut Units,
+    pos: DbgPos,
+) -> CompileResult {
     compile_ref(engine, par, destination, &[0xE3, 0x0D], pos)
 }
 
-fn compile_ifelseref(engine: &mut Engine, par: &[&str], destination: &mut Units, pos: DbgPos) -> CompileResult {
+fn compile_ifelseref(
+    engine: &mut Engine,
+    par: &[&str],
+    destination: &mut Units,
+    pos: DbgPos,
+) -> CompileResult {
     compile_ref(engine, par, destination, &[0xE3, 0x0E], pos)
 }
 
-fn compile_ifrefelseref(engine: &mut Engine, par: &[&str], destination: &mut Units, pos: DbgPos) -> CompileResult {
+fn compile_ifrefelseref(
+    engine: &mut Engine,
+    par: &[&str],
+    destination: &mut Units,
+    pos: DbgPos,
+) -> CompileResult {
     if engine.line_no == 0 && engine.char_no == 0 {
         // the case of instruction form without an argument
         return destination.write_command(&[0xE3, 0x0F], DbgNode::from(pos));
     }
     par.assert_len(2)?;
-    let (cont1, dbg1) = engine
-        .compile(par[0])
-        .map_err(|e| OperationError::Nested(Box::new(e)))?
-        .finalize();
-    let (cont2, dbg2) = engine
-        .compile(par[1])
-        .map_err(|e| OperationError::Nested(Box::new(e)))?
-        .finalize();
-    let dbg = DbgNode::from_ext(pos, vec!(dbg1, dbg2));
-    destination.write_composite_command(&[0xE3, 0x0F], vec!(cont1, cont2), dbg)
+    let (cont1, dbg1) =
+        engine.compile(par[0]).map_err(|e| OperationError::Nested(Box::new(e)))?.finalize();
+    let (cont2, dbg2) =
+        engine.compile(par[1]).map_err(|e| OperationError::Nested(Box::new(e)))?.finalize();
+    let dbg = DbgNode::from_ext(pos, vec![dbg1, dbg2]);
+    destination.write_composite_command(&[0xE3, 0x0F], vec![cont1, cont2], dbg)
 }
 
-fn compile_pushref(engine: &mut Engine, par: &[&str], destination: &mut Units, pos: DbgPos) -> CompileResult {
+fn compile_pushref(
+    engine: &mut Engine,
+    par: &[&str],
+    destination: &mut Units,
+    pos: DbgPos,
+) -> CompileResult {
     compile_ref(engine, par, destination, &[0x88], pos)
 }
 
-fn compile_pushrefslice(engine: &mut Engine, par: &[&str], destination: &mut Units, pos: DbgPos) -> CompileResult {
+fn compile_pushrefslice(
+    engine: &mut Engine,
+    par: &[&str],
+    destination: &mut Units,
+    pos: DbgPos,
+) -> CompileResult {
     compile_ref(engine, par, destination, &[0x89], pos)
 }
 
-fn compile_pushrefcont(engine: &mut Engine, par: &[&str], destination: &mut Units, pos: DbgPos) -> CompileResult {
+fn compile_pushrefcont(
+    engine: &mut Engine,
+    par: &[&str],
+    destination: &mut Units,
+    pos: DbgPos,
+) -> CompileResult {
     compile_ref(engine, par, destination, &[0x8A], pos)
 }
 
-fn compile_pop(_engine: &mut Engine, par: &[&str], destination: &mut Units, pos: DbgPos) -> CompileResult {
+fn compile_pop(
+    _engine: &mut Engine,
+    par: &[&str],
+    destination: &mut Units,
+    pos: DbgPos,
+) -> CompileResult {
     par.assert_len(1)?;
     compile_with_any_register(par[0], &[0x30], &[0x57, 0x00], &[0xED, 0x50], destination, pos)
 }
 
-fn compile_push(_engine: &mut Engine, par: &[&str], destination: &mut Units, pos: DbgPos) -> CompileResult {
+fn compile_push(
+    _engine: &mut Engine,
+    par: &[&str],
+    destination: &mut Units,
+    pos: DbgPos,
+) -> CompileResult {
     par.assert_len(1)?;
-    compile_with_any_register(par[0],  &[0x20], &[0x56, 0x00], &[0xED, 0x40], destination, pos)
+    compile_with_any_register(par[0], &[0x20], &[0x56, 0x00], &[0xED, 0x40], destination, pos)
 }
 
-fn write_pushcont(cont: BuilderData, dbg: DbgNode, destination: &mut Units, pos: DbgPos) -> CompileResult {
+fn write_pushcont(
+    cont: BuilderData,
+    dbg: DbgNode,
+    destination: &mut Units,
+    pos: DbgPos,
+) -> CompileResult {
     let r = cont.references_used() as u8;
     if r > 3 {
-        return Err(OperationError::NotFitInSlice)
+        return Err(OperationError::NotFitInSlice);
     }
     let x = cont.data().len() as u8;
     if x > 127 - 2 {
-        return Err(OperationError::NotFitInSlice)
+        return Err(OperationError::NotFitInSlice);
     }
     // 1000111r rxxxxxxx ccc...
-    let mut code = vec!(0x8e | (r & 2) >> 1, (r & 1) << 7 | x);
+    let mut code = vec![0x8e | (r & 2) >> 1, (r & 1) << 7 | x];
     let mut dbg2 = DbgNode::from(pos);
     dbg2.inline_node(code.len() * 8, dbg);
     code.extend_from_slice(cont.data());
@@ -206,19 +304,22 @@ fn write_pushcont(cont: BuilderData, dbg: DbgNode, destination: &mut Units, pos:
     destination.write_composite_command(&code, refs, dbg2)
 }
 
-fn compile_pushcont(engine: &mut Engine, par: &[&str], destination: &mut Units, pos: DbgPos) -> CompileResult {
+fn compile_pushcont(
+    engine: &mut Engine,
+    par: &[&str],
+    destination: &mut Units,
+    pos: DbgPos,
+) -> CompileResult {
     if engine.line_no == 0 && engine.char_no == 0 {
-        return Err(OperationError::MissingBlock)
+        return Err(OperationError::MissingBlock);
     }
     par.assert_len(1)?;
-    let (cont, dbg) = engine
-        .compile(par[0])
-        .map_err(|e| OperationError::Nested(Box::new(e)))?
-        .finalize();
+    let (cont, dbg) =
+        engine.compile(par[0]).map_err(|e| OperationError::Nested(Box::new(e)))?.finalize();
     if cont.references_used() > 0 {
         write_pushcont(cont.clone(), dbg.clone(), destination, pos.clone()).or_else(|_| {
-            let dbg2 = DbgNode::from_ext(pos, vec!(dbg));
-            destination.write_composite_command(&[0x8E, 0x80], vec!(cont), dbg2)
+            let dbg2 = DbgNode::from_ext(pos, vec![dbg]);
+            destination.write_composite_command(&[0x8E, 0x80], vec![cont], dbg2)
         })
     } else {
         let n = cont.data().len();
@@ -235,11 +336,11 @@ fn compile_pushcont(engine: &mut Engine, par: &[&str], destination: &mut Units, 
             command.extend_from_slice(cont.data());
             destination.write_command(command.as_slice(), dbg2)
         } else if n <= 127 {
-            //We cannot put command and code in one cell, because it will
-            //be more than 1023 bits: 127 bytes (pushcont data) + 2 bytes(opcode).
-            //Write as r = 1 and xx = 0x00.
-            let dbg2 = DbgNode::from_ext(pos, vec!(dbg));
-            destination.write_composite_command(&[0x8E, 0x80], vec!(cont), dbg2)
+            // We cannot put command and code in one cell, because it will
+            // be more than 1023 bits: 127 bytes (pushcont data) + 2 bytes(opcode).
+            // Write as r = 1 and xx = 0x00.
+            let dbg2 = DbgNode::from_ext(pos, vec![dbg]);
+            destination.write_composite_command(&[0x8E, 0x80], vec![cont], dbg2)
         } else {
             log::error!(target: "compile", "Maybe cell longer than 1024 bit?");
             Err(OperationError::NotFitInSlice)
@@ -247,18 +348,24 @@ fn compile_pushcont(engine: &mut Engine, par: &[&str], destination: &mut Units, 
     }
 }
 
-fn compile_callxargs(_engine: &mut Engine, par: &[&str], destination: &mut Units, pos: DbgPos) -> CompileResult {
+fn compile_callxargs(
+    _engine: &mut Engine,
+    par: &[&str],
+    destination: &mut Units,
+    pos: DbgPos,
+) -> CompileResult {
     par.assert_len(2)?;
     let pargs = parse_const_u4(par[0]).parameter("pargs")?;
     if par[1] == "-1" {
         destination.write_command(&[0xDB, pargs & 0x0F], DbgNode::from(pos))
     } else {
         let rargs = parse_const_i4(par[1]).parameter("rargs")?;
-        destination.write_command(&[0xDA, ((pargs & 0x0F) << 4) | (rargs & 0x0F)], DbgNode::from(pos))
+        destination
+            .write_command(&[0xDA, ((pargs & 0x0F) << 4) | (rargs & 0x0F)], DbgNode::from(pos))
     }
 }
 
-struct Div<M: CommandBehaviourModifier> (PhantomData<M>);
+struct Div<M: CommandBehaviourModifier>(PhantomData<M>);
 
 macro_rules! div_variant {
     (@resolve $command:ident => $code: expr) => {
@@ -323,7 +430,12 @@ div_variant!(
 );
 
 impl<M: CommandBehaviourModifier> Div<M> {
-    pub fn lshift(_engine: &mut Engine, par: &[&str], destination: &mut Units, pos: DbgPos) -> CompileResult {
+    pub fn lshift(
+        _engine: &mut Engine,
+        par: &[&str],
+        destination: &mut Units,
+        pos: DbgPos,
+    ) -> CompileResult {
         par.assert_len_in(0..=1)?;
         destination.write_command(
             &M::modify({
@@ -333,11 +445,16 @@ impl<M: CommandBehaviourModifier> Div<M> {
                     vec![0xAC]
                 }
             }),
-            DbgNode::from(pos)
+            DbgNode::from(pos),
         )
     }
 
-    fn rshift(_engine: &mut Engine, par: &[&str], destination: &mut Units, pos: DbgPos) -> CompileResult {
+    fn rshift(
+        _engine: &mut Engine,
+        par: &[&str],
+        destination: &mut Units,
+        pos: DbgPos,
+    ) -> CompileResult {
         par.assert_len_in(0..=1)?;
         let command = if par.len() == 1 {
             vec![0xAB, parse_const_u8_plus_one(par[0]).parameter("value")?]
@@ -346,17 +463,17 @@ impl<M: CommandBehaviourModifier> Div<M> {
         };
         destination.write_command(&M::modify(command), DbgNode::from(pos))
     }
-
 }
 
-fn compile_setcontargs(_engine: &mut Engine, par: &[&str], destination: &mut Units, pos: DbgPos) -> CompileResult {
+fn compile_setcontargs(
+    _engine: &mut Engine,
+    par: &[&str],
+    destination: &mut Units,
+    pos: DbgPos,
+) -> CompileResult {
     par.assert_len_in(1..=2)?;
     let rargs = parse_const_u4(par[0]).parameter("register")?;
-    let nargs = if par.len() == 2 {
-        parse_const_i4(par[1]).parameter("arg 1")?
-    } else {
-        0x0F
-    };
+    let nargs = if par.len() == 2 { parse_const_i4(par[1]).parameter("arg 1")? } else { 0x0F };
     destination.write_command(&[0xEC, ((rargs & 0x0F) << 4) | (nargs & 0x0F)], DbgNode::from(pos))
 }
 
@@ -393,21 +510,35 @@ fn compile_pushint(_engine: &mut Engine, par: &[&str], destination: &mut Units, 
     }?.as_slice(), DbgNode::from(pos))
 }
 
-fn compile_bchkbits(_engine: &mut Engine, par: &[&str], destination: &mut Units, pos: DbgPos) -> CompileResult {
-    destination.write_command({
-        if par.len() == 1 {
-            Ok(vec![0xCF, 0x38, parse_const_u8_plus_one(par[0]).parameter("value")?])
-        } else {
-            Ok::<Vec<u8>, OperationError>(vec![0xCF, 0x39])
-        }
-    }?.as_slice(), DbgNode::from(pos))
+fn compile_bchkbits(
+    _engine: &mut Engine,
+    par: &[&str],
+    destination: &mut Units,
+    pos: DbgPos,
+) -> CompileResult {
+    destination.write_command(
+        {
+            if par.len() == 1 {
+                Ok(vec![0xCF, 0x38, parse_const_u8_plus_one(par[0]).parameter("value")?])
+            } else {
+                Ok::<Vec<u8>, OperationError>(vec![0xCF, 0x39])
+            }
+        }?
+        .as_slice(),
+        DbgNode::from(pos),
+    )
 }
 
-fn compile_bchkbitsq(_engine: &mut Engine, par: &[&str], destination: &mut Units, pos: DbgPos) -> CompileResult {
+fn compile_bchkbitsq(
+    _engine: &mut Engine,
+    par: &[&str],
+    destination: &mut Units,
+    pos: DbgPos,
+) -> CompileResult {
     if par.len() == 1 {
         destination.write_command(
             vec![0xCF, 0x3C, parse_const_u8_plus_one(par[0]).parameter("value")?].as_slice(),
-            DbgNode::from(pos)
+            DbgNode::from(pos),
         )
     } else {
         destination.write_command(&[0xCF, 0x3D], DbgNode::from(pos))
@@ -427,26 +558,46 @@ fn compile_dumpstr(
     let string = string.as_slice();
     let len = string.len();
     if len > max_len {
-        return Err(ParameterError::OutOfRange.parameter(par[0]))
+        return Err(ParameterError::OutOfRange.parameter(par[0]));
     }
     buffer[1] |= (len - 1 + 16 - max_len) as u8;
     buffer.extend_from_slice(string);
     destination.write_command(buffer.as_slice(), DbgNode::from(pos))
 }
 
-fn compile_dumptosfmt(engine: &mut Engine, par: &[&str], destination: &mut Units, pos: DbgPos) -> CompileResult {
+fn compile_dumptosfmt(
+    engine: &mut Engine,
+    par: &[&str],
+    destination: &mut Units,
+    pos: DbgPos,
+) -> CompileResult {
     compile_dumpstr(engine, par, destination, vec![0xFE, 0xF0], 16, pos)
 }
 
-fn compile_logstr(engine: &mut Engine, par: &[&str], destination: &mut Units, pos: DbgPos) -> CompileResult {
+fn compile_logstr(
+    engine: &mut Engine,
+    par: &[&str],
+    destination: &mut Units,
+    pos: DbgPos,
+) -> CompileResult {
     compile_dumpstr(engine, par, destination, vec![0xFE, 0xF0, 0x00], 15, pos)
 }
 
-fn compile_printstr(engine: &mut Engine, par: &[&str], destination: &mut Units, pos: DbgPos) -> CompileResult {
+fn compile_printstr(
+    engine: &mut Engine,
+    par: &[&str],
+    destination: &mut Units,
+    pos: DbgPos,
+) -> CompileResult {
     compile_dumpstr(engine, par, destination, vec![0xFE, 0xF0, 0x01], 15, pos)
 }
 
-fn compile_stsliceconst(_engine: &mut Engine, par: &[&str], destination: &mut Units, pos: DbgPos) -> CompileResult {
+fn compile_stsliceconst(
+    _engine: &mut Engine,
+    par: &[&str],
+    destination: &mut Units,
+    pos: DbgPos,
+) -> CompileResult {
     par.assert_len(1)?;
     if par[0] == "0" {
         destination.write_command(&[0xCF, 0x81], DbgNode::from(pos))
@@ -458,18 +609,26 @@ fn compile_stsliceconst(_engine: &mut Engine, par: &[&str], destination: &mut Un
     }
 }
 
-fn compile_pushslice(_engine: &mut Engine, par: &[&str], destination: &mut Units, pos: DbgPos)
--> CompileResult {
+fn compile_pushslice(
+    _engine: &mut Engine,
+    par: &[&str],
+    destination: &mut Units,
+    pos: DbgPos,
+) -> CompileResult {
     par.assert_len(1)?;
     let buffer = match compile_slice(par[0], vec![0x8B, 0], 8, 0, 4) {
         Ok(buffer) => buffer,
-        Err(_) => compile_slice(par[0], vec![0x8D, 0], 8, 3, 7).parameter("arg 0")?
+        Err(_) => compile_slice(par[0], vec![0x8D, 0], 8, 3, 7).parameter("arg 0")?,
     };
     destination.write_command(buffer.as_slice(), DbgNode::from(pos))
 }
 
-fn compile_xchg(_engine: &mut Engine, par: &[&str], destination: &mut Units, pos: DbgPos)
--> CompileResult {
+fn compile_xchg(
+    _engine: &mut Engine,
+    par: &[&str],
+    destination: &mut Units,
+    pos: DbgPos,
+) -> CompileResult {
     par.assert_len_in(0..=2)?;
     if par.is_empty() {
         destination.write_command(&[0x01], DbgNode::from(pos))
@@ -480,9 +639,7 @@ fn compile_xchg(_engine: &mut Engine, par: &[&str], destination: &mut Units, pos
         let reg1 = parse_register(par[0], 'S', 0..16).parameter("arg 0")? as u8;
         let reg2 = parse_register(par[1], 'S', 0..256).parameter("arg 1")? as u8;
         if reg1 >= reg2 {
-            Err(OperationError::LogicErrorInParameters(
-                "arg 1 should be greater than arg 0"
-            ))
+            Err(OperationError::LogicErrorInParameters("arg 1 should be greater than arg 0"))
         } else if reg1 == 0 {
             if reg2 <= 15 {
                 // XCHG s0, si == XCHG si
@@ -499,37 +656,52 @@ fn compile_xchg(_engine: &mut Engine, par: &[&str], destination: &mut Units, pos
         } else if reg2 > 15 {
             Err(ParameterError::OutOfRange.parameter("Register 2"))
         } else {
-            destination.write_command(&[0x10, ((reg1 << 4) & 0xF0) | (reg2 & 0x0F)], DbgNode::from(pos))
+            destination
+                .write_command(&[0x10, ((reg1 << 4) & 0xF0) | (reg2 & 0x0F)], DbgNode::from(pos))
         }
     }
 }
 
-fn compile_throw_helper(par: &[&str], short_opcode: u8, long_opcode: u8, destination: &mut Units, pos: DbgPos)
--> CompileResult {
+fn compile_throw_helper(
+    par: &[&str],
+    short_opcode: u8,
+    long_opcode: u8,
+    destination: &mut Units,
+    pos: DbgPos,
+) -> CompileResult {
     par.assert_len(1)?;
     let number = parse_const_u11(par[0]).parameter("Number")?;
-    destination.write_command({
-        if number < 64 {
-            let number = number as u8;
-            Ok(vec![0xF2, short_opcode | number])
-        } else if number < 2048 {
-            let hi = long_opcode | ((number / 256) as u8);
-            let lo = (number % 256) as u8;
-            Ok(vec![0xF2, hi, lo])
-        } else {
-            Err(ParameterError::OutOfRange.parameter("Number"))
-        }
-    }?.as_slice(), DbgNode::from(pos))
+    destination.write_command(
+        {
+            if number < 64 {
+                let number = number as u8;
+                Ok(vec![0xF2, short_opcode | number])
+            } else if number < 2048 {
+                let hi = long_opcode | ((number / 256) as u8);
+                let lo = (number % 256) as u8;
+                Ok(vec![0xF2, hi, lo])
+            } else {
+                Err(ParameterError::OutOfRange.parameter("Number"))
+            }
+        }?
+        .as_slice(),
+        DbgNode::from(pos),
+    )
 }
 
-pub(super) fn compile_slice(par: &str, mut prefix: Vec<u8>, offset: usize, r: usize, x: usize)
--> std::result::Result<Vec<u8>, ParameterError> {
+pub(super) fn compile_slice(
+    par: &str,
+    mut prefix: Vec<u8>,
+    offset: usize,
+    r: usize,
+    x: usize,
+) -> std::result::Result<Vec<u8>, ParameterError> {
     // prefix - offset..r..x - data
     let shift = (offset + r + x) % 8;
     let mut buffer = parse_slice(par, shift)?;
     let len = buffer.len() as u8 - 1;
     if len >= (1 << x) {
-        return Err(ParameterError::OutOfRange)
+        return Err(ParameterError::OutOfRange);
     }
     if (offset % 8) + r + x < 8 {
         // a tail of the prefix and a start of the data are in a same byte
@@ -546,8 +718,12 @@ pub(super) fn compile_slice(par: &str, mut prefix: Vec<u8>, offset: usize, r: us
     Ok(prefix)
 }
 
-fn compile_sdbegins(_engine: &mut Engine, par: &[&str], destination: &mut Units, pos: DbgPos)
--> CompileResult {
+fn compile_sdbegins(
+    _engine: &mut Engine,
+    par: &[&str],
+    destination: &mut Units,
+    pos: DbgPos,
+) -> CompileResult {
     par.assert_len(1)?;
     // Regular version have special two aliaces: SDBEGINS '0', SDBEGINS '1'
     if par[0] == "0" {
@@ -560,57 +736,83 @@ fn compile_sdbegins(_engine: &mut Engine, par: &[&str], destination: &mut Units,
     }
 }
 
-fn compile_sdbeginsq(_engine: &mut Engine, par: &[&str], destination: &mut Units, pos: DbgPos)
--> CompileResult {
+fn compile_sdbeginsq(
+    _engine: &mut Engine,
+    par: &[&str],
+    destination: &mut Units,
+    pos: DbgPos,
+) -> CompileResult {
     par.assert_len(1)?;
     let buffer = compile_slice(par[0], vec![0xD7, 0x2C], 14, 0, 7).parameter("arg 0")?;
     destination.write_command(buffer.as_slice(), DbgNode::from(pos))
 }
 
-fn compile_throw(_engine: &mut Engine, par: &[&str], destination: &mut Units, pos: DbgPos)
--> CompileResult {
+fn compile_throw(
+    _engine: &mut Engine,
+    par: &[&str],
+    destination: &mut Units,
+    pos: DbgPos,
+) -> CompileResult {
     compile_throw_helper(par, 0x00, 0xC0, destination, pos)
 }
 
-fn compile_throwif(_engine: &mut Engine, par: &[&str], destination: &mut Units, pos: DbgPos)
--> CompileResult {
+fn compile_throwif(
+    _engine: &mut Engine,
+    par: &[&str],
+    destination: &mut Units,
+    pos: DbgPos,
+) -> CompileResult {
     compile_throw_helper(par, 0x40, 0xD0, destination, pos)
 }
 
-fn compile_throwifnot(_engine: &mut Engine, par: &[&str], destination: &mut Units, pos: DbgPos)
--> CompileResult {
+fn compile_throwifnot(
+    _engine: &mut Engine,
+    par: &[&str],
+    destination: &mut Units,
+    pos: DbgPos,
+) -> CompileResult {
     compile_throw_helper(par, 0x80, 0xE0, destination, pos)
 }
 
-fn compile_blob(_engine: &mut Engine, par: &[&str], destination: &mut Units, pos: DbgPos)
--> CompileResult {
+fn compile_blob(
+    _engine: &mut Engine,
+    par: &[&str],
+    destination: &mut Units,
+    pos: DbgPos,
+) -> CompileResult {
     par.assert_len(1)?;
     let data = par[0];
     if !data.to_ascii_lowercase().starts_with('x') {
-        return Err(ParameterError::UnexpectedType.parameter("parameter"))
+        return Err(ParameterError::UnexpectedType.parameter("parameter"));
     }
     let slice = SliceData::from_string(&data[1..])
         .map_err(|_| ParameterError::UnexpectedType.parameter("parameter"))?;
     destination.write_command_bitstring(slice.storage(), slice.remaining_bits(), DbgNode::from(pos))
 }
 
-fn compile_cell(engine: &mut Engine, par: &[&str], destination: &mut Units, _pos: DbgPos)
--> CompileResult {
+fn compile_cell(
+    engine: &mut Engine,
+    par: &[&str],
+    destination: &mut Units,
+    _pos: DbgPos,
+) -> CompileResult {
     if engine.line_no == 0 && engine.char_no == 0 {
-        return Err(OperationError::MissingBlock)
+        return Err(OperationError::MissingBlock);
     }
     par.assert_len(1)?;
-    let (cont, dbg) = engine
-        .compile(par[0])
-        .map_err(|e| OperationError::Nested(Box::new(e)))?
-        .finalize();
+    let (cont, dbg) =
+        engine.compile(par[0]).map_err(|e| OperationError::Nested(Box::new(e)))?.finalize();
     let mut dbg2 = DbgNode::default();
     dbg2.append_node(dbg);
-    destination.write_composite_command(&[], vec!(cont), dbg2)
+    destination.write_composite_command(&[], vec![cont], dbg2)
 }
 
-fn compile_inline(engine: &mut Engine, par: &[&str], destination: &mut Units, _pos: DbgPos)
--> CompileResult {
+fn compile_inline(
+    engine: &mut Engine,
+    par: &[&str],
+    destination: &mut Units,
+    _pos: DbgPos,
+) -> CompileResult {
     par.assert_len(1)?;
     let name = par[0];
     if let Some(unit) = engine.named_units.get(name) {
@@ -620,16 +822,19 @@ fn compile_inline(engine: &mut Engine, par: &[&str], destination: &mut Units, _p
     }
 }
 
-fn compile_code_dict_cell(engine: &mut Engine, par: &[&str], destination: &mut Units, _pos: DbgPos) -> CompileResult {
+fn compile_code_dict_cell(
+    engine: &mut Engine,
+    par: &[&str],
+    destination: &mut Units,
+    _pos: DbgPos,
+) -> CompileResult {
     par.assert_len(2)?;
-    let dict_key_bitlen = par[0].parse::<usize>()
-        .map_err(|_| OperationError::CodeDictConstruction)?;
-    let tokens = par[1]
-        .split(&[' ', '\t', '\n', ',', '='])
-        .filter(|t| !t.is_empty())
-        .collect::<Vec<_>>();
+    let dict_key_bitlen =
+        par[0].parse::<usize>().map_err(|_| OperationError::CodeDictConstruction)?;
+    let tokens =
+        par[1].split(&[' ', '\t', '\n', ',', '=']).filter(|t| !t.is_empty()).collect::<Vec<_>>();
     if tokens.len().is_odd() {
-        return Err(OperationError::CodeDictConstruction)
+        return Err(OperationError::CodeDictConstruction);
     }
 
     let mut map = HashMap::new();
@@ -639,17 +844,19 @@ fn compile_code_dict_cell(engine: &mut Engine, par: &[&str], destination: &mut U
         // parse the key
         let key = pair[0];
         if !key.to_ascii_lowercase().starts_with('x') {
-            return Err(OperationError::CodeDictConstruction)
+            return Err(OperationError::CodeDictConstruction);
         }
         let key_slice = SliceData::from_string(&key[1..])
             .map_err(|_| ParameterError::UnexpectedType.parameter("key"))?;
         if key_slice.remaining_bits() != dict_key_bitlen {
-            return Err(OperationError::CodeDictConstruction)
+            return Err(OperationError::CodeDictConstruction);
         }
 
         // get an assembled fragment by the name
         let name = pair[1];
-        let (value_slice, mut value_dbg) = engine.named_units.get(name)
+        let (value_slice, mut value_dbg) = engine
+            .named_units
+            .get(name)
             .ok_or(OperationError::CodeDictConstruction)?
             .clone()
             .finalize();
@@ -667,7 +874,8 @@ fn compile_code_dict_cell(engine: &mut Engine, par: &[&str], destination: &mut U
 
     // update debug info
     for (key, (mut value_dbg, value_slice)) in map {
-        let value_slice_after = dict.get(key)
+        let value_slice_after = dict
+            .get(key)
             .map_err(|_| OperationError::CodeDictConstruction)?
             .ok_or(OperationError::CodeDictConstruction)?;
         adjust_debug_map(&mut value_dbg, value_slice, value_slice_after)
@@ -682,14 +890,14 @@ fn compile_code_dict_cell(engine: &mut Engine, par: &[&str], destination: &mut U
     let mut dbg = DbgNode::default();
     dbg.append_node(make_dbgnode(dict_cell, info));
 
-    destination.write_composite_command(&[], vec!(b), dbg)
+    destination.write_composite_command(&[], vec![b], dbg)
 }
 
 fn adjust_debug_map(map: &mut DbgInfo, before: SliceData, after: SliceData) -> Status {
     let hash_before = before.cell().repr_hash();
     let hash_after = after.cell().repr_hash();
-    let entry_before = map.remove(&hash_before)
-        .ok_or_else(|| format_err!("Failed to remove old value."))?;
+    let entry_before =
+        map.remove(&hash_before).ok_or_else(|| format_err!("Failed to remove old value."))?;
 
     let adjustment = after.pos();
     let mut entry_after = BTreeMap::new();
@@ -709,6 +917,7 @@ impl DbgNodeMaker {
     fn new(info: DbgInfo) -> Self {
         Self { info }
     }
+
     fn make(&self, cell: Cell) -> DbgNode {
         let mut node = DbgNode::default();
         if let Some(map) = self.info.get(&cell.repr_hash()) {
@@ -729,11 +938,18 @@ fn make_dbgnode(cell: Cell, dbginfo: DbgInfo) -> DbgNode {
     DbgNodeMaker::new(dbginfo).make(cell)
 }
 
-fn compile_inline_computed_cell(engine: &mut Engine, par: &[&str], destination: &mut Units, _pos: DbgPos) -> CompileResult {
+fn compile_inline_computed_cell(
+    engine: &mut Engine,
+    par: &[&str],
+    destination: &mut Units,
+    _pos: DbgPos,
+) -> CompileResult {
     par.assert_len(2)?;
 
     let name = par[0];
-    let (code, mut _value_dbg) = engine.named_units.get(name)
+    let (code, mut _value_dbg) = engine
+        .named_units
+        .get(name)
         .ok_or(OperationError::FragmentIsNotDefined(name.to_string()))?
         .clone()
         .finalize();
@@ -743,65 +959,76 @@ fn compile_inline_computed_cell(engine: &mut Engine, par: &[&str], destination: 
         u64::from_str_radix(&param2[2..], 16)
             .map_err(|_| ParameterError::NotSupported.parameter("capabilities"))?
     } else {
-        par[1].parse::<u64>()
-            .map_err(|_| ParameterError::NotSupported.parameter("capabilities"))?
+        par[1].parse::<u64>().map_err(|_| ParameterError::NotSupported.parameter("capabilities"))?
     };
 
     // initialize and run vm
     let mut vm = ton_vm::executor::Engine::with_capabilities(capabilities).setup_with_libraries(
-        code, None, None, None, vec![]);
+        code,
+        None,
+        None,
+        None,
+        vec![],
+    );
     match vm.execute() {
-        Err(_e) => {
-            return Err(OperationError::CellComputeError)
-        }
+        Err(_e) => return Err(OperationError::CellComputeError),
         Ok(code) => {
             if code != 0 {
-                return Err(OperationError::CellComputeError)
+                return Err(OperationError::CellComputeError);
             }
         }
     };
 
     // get a cell from the top of the stack
-    let cell = vm.stack().get(0).as_cell()
-        .map_err(|_| OperationError::CellComputeNotACell)?;
+    let cell = vm.stack().get(0).as_cell().map_err(|_| OperationError::CellComputeNotACell)?;
 
     // pull refs and data from the cell separately
     let mut refs = Vec::new();
     for r in 0..cell.references_count() {
-        let c = cell.reference(r)
-            .map_err(|_| OperationError::CellComputeInternal)?;
-        let b = BuilderData::from_cell(&c)
-            .map_err(|_| OperationError::CellComputeInternal)?;
+        let c = cell.reference(r).map_err(|_| OperationError::CellComputeInternal)?;
+        let b = BuilderData::from_cell(&c).map_err(|_| OperationError::CellComputeInternal)?;
         refs.push(b);
     }
-    let slice = SliceData::load_cell_ref(cell)
-        .map_err(|_| OperationError::CellComputeInternal)?;
+    let slice = SliceData::load_cell_ref(cell).map_err(|_| OperationError::CellComputeInternal)?;
     let dbg_node = make_dbgnode(cell.clone(), DbgInfo::default());
 
     // write the cell's data and refs
-    destination.write_command_bitstring(slice.storage(), slice.remaining_bits(), DbgNode::default())?;
+    destination.write_command_bitstring(
+        slice.storage(),
+        slice.remaining_bits(),
+        DbgNode::default(),
+    )?;
     destination.write_composite_command(&[], refs, dbg_node)
 }
 
-fn compile_fragment(engine: &mut Engine, par: &[&str], _destination: &mut Units, _pos: DbgPos) -> CompileResult {
+fn compile_fragment(
+    engine: &mut Engine,
+    par: &[&str],
+    _destination: &mut Units,
+    _pos: DbgPos,
+) -> CompileResult {
     par.assert_len(2)?;
     let name = par[0];
-    let (builder, dbg) = engine
-        .compile(par[1])
-        .map_err(|e| OperationError::Nested(Box::new(e)))?
-        .finalize();
+    let (builder, dbg) =
+        engine.compile(par[1]).map_err(|e| OperationError::Nested(Box::new(e)))?.finalize();
     let unit = Unit::new(builder, dbg);
     if engine.named_units.insert(name.to_string(), unit).is_some() {
-        return Err(OperationError::FragmentIsAlreadyDefined(name.to_string()))
+        return Err(OperationError::FragmentIsAlreadyDefined(name.to_string()));
     }
     engine.dbgpos = None;
     Ok(())
 }
 
-fn compile_loc(engine: &mut Engine, par: &[&str], _destination: &mut Units, _pos: DbgPos) -> CompileResult {
+fn compile_loc(
+    engine: &mut Engine,
+    par: &[&str],
+    _destination: &mut Units,
+    _pos: DbgPos,
+) -> CompileResult {
     par.assert_len(2)?;
     let filename = par[0];
-    let line = par[1].parse::<usize>()
+    let line = par[1]
+        .parse::<usize>()
         .map_err(|_| ParameterError::NotSupported.parameter("line number"))?;
     if line == 0 {
         engine.dbgpos = None;
@@ -811,25 +1038,28 @@ fn compile_loc(engine: &mut Engine, par: &[&str], _destination: &mut Units, _pos
     Ok(())
 }
 
-fn compile_library_cell(_engine: &mut Engine, par: &[&str], destination: &mut Units, _pos: DbgPos) -> CompileResult {
+fn compile_library_cell(
+    _engine: &mut Engine,
+    par: &[&str],
+    destination: &mut Units,
+    _pos: DbgPos,
+) -> CompileResult {
     par.assert_len(1)?;
 
-    let hash = hex::decode(par[0])
-        .map_err(|e| OperationError::Internal(e.to_string()))?;
+    let hash = hex::decode(par[0]).map_err(|e| OperationError::Internal(e.to_string()))?;
 
-    let mut b = BuilderData::with_raw(vec!(0x02), 8)?;
+    let mut b = BuilderData::with_raw(vec![0x02], 8)?;
     b.append_raw(hash.as_slice(), 256)?;
-    b.set_type(ton_types::CellType::LibraryReference);
+    b.set_type(tvm_types::CellType::LibraryReference);
 
     let mut dbg = DbgNode::default();
     dbg.append_node(DbgNode::default());
-    destination.write_composite_command(&[], vec!(b), dbg)
+    destination.write_composite_command(&[], vec![b], dbg)
 }
 
 // Compilation engine *********************************************************
 
 impl Engine {
-
     #[rustfmt::skip]
     pub fn add_complex_commands(&mut self) {
         // Alphabetically sorted

@@ -1,22 +1,22 @@
-/*
- * Copyright 2023 TON DEV SOLUTIONS LTD.
- *
- * Licensed under the SOFTWARE EVALUATION License (the "License"); you may not use
- * this file except in compliance with the License.
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific TON DEV software governing permissions and
- * limitations under the License.
- */
+// Copyright 2023 TON DEV SOLUTIONS LTD.
+//
+// Licensed under the SOFTWARE EVALUATION License (the "License"); you may not
+// use this file except in compliance with the License.
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific TON DEV software governing permissions and
+// limitations under the License.
 
-use ton_types::{Cell, Result, SliceData};
-use super::{
-    types::{Instruction, InstructionParameter, Code},
-    codedict::DelimitedHashmapE
-};
+use tvm_types::Cell;
+use tvm_types::Result;
+use tvm_types::SliceData;
 
+use super::codedict::DelimitedHashmapE;
+use super::types::Code;
+use super::types::Instruction;
+use super::types::InstructionParameter;
 
 pub fn print_tree_of_cells(toc: &Cell) {
     fn print_tree_of_cells(cell: &Cell, prefix: String, last: bool) {
@@ -135,10 +135,12 @@ impl Code {
                     "DICTPUSHCONST" | "PFXDICTSWITCH" => {
                         // TODO better improve assembler for these two insns
                         text += &print_dictpushconst(insn, indent);
-                        continue
+                        continue;
                     }
                     "IMPLICIT-JMP" => {
-                        if let Some(InstructionParameter::Code { code, cell }) = insn.params().get(0) {
+                        if let Some(InstructionParameter::Code { code, cell }) =
+                            insn.params().get(0)
+                        {
                             let hash = cell.as_ref().unwrap().repr_hash().to_hex_string();
                             text += &format!(".cell {{ ;; #{}\n", hash);
                             let inner_indent = String::from("  ") + indent;
@@ -148,9 +150,9 @@ impl Code {
                         } else {
                             unreachable!()
                         }
-                        continue
+                        continue;
                     }
-                    _ => ()
+                    _ => (),
                 }
             }
             text += insn.name();
@@ -167,7 +169,12 @@ impl Code {
     }
 }
 
-fn print_insn_params(params: &Vec<InstructionParameter>, indent: &str, full: bool, bytecode_width: usize) -> String {
+fn print_insn_params(
+    params: &Vec<InstructionParameter>,
+    indent: &str,
+    full: bool,
+    bytecode_width: usize,
+) -> String {
     use InstructionParameter::*;
 
     let mut text = String::new();

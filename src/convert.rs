@@ -1,17 +1,16 @@
-/*
-* Copyright (C) 2019-2021 TON Labs. All Rights Reserved.
-*
-* Licensed under the SOFTWARE EVALUATION License (the "License"); you may not use
-* this file except in compliance with the License.
-*
-* Unless required by applicable law or agreed to in writing, software
-* distributed under the License is distributed on an "AS IS" BASIS,
-* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-* See the License for the specific TON DEV software governing permissions and
-* limitations under the License.
-*/
+// Copyright (C) 2019-2021 TON Labs. All Rights Reserved.
+//
+// Licensed under the SOFTWARE EVALUATION License (the "License"); you may not
+// use this file except in compliance with the License.
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific TON DEV software governing permissions and
+// limitations under the License.
 
-use num::{bigint::Sign, BigInt};
+use num::bigint::Sign;
+use num::BigInt;
 
 #[inline]
 fn bits_to_bytes(length_in_bits: usize) -> usize {
@@ -21,30 +20,31 @@ fn bits_to_bytes(length_in_bits: usize) -> usize {
 #[inline]
 fn bitsize(value: &BigInt) -> usize {
     if (value == &0.into()) || (value == &(-1).into()) {
-        return 1
+        return 1;
     }
     let res = value.bits() as usize;
     if value.sign() == Sign::Plus {
-        return res + 1
+        return res + 1;
     }
-    // For negative values value.bits() returns correct result only when value is power of 2.
+    // For negative values value.bits() returns correct result only when value is
+    // power of 2.
     let mut modpow2 = -value;
     modpow2 &= &modpow2 - 1;
     if modpow2.sign() == Sign::NoSign {
-        return res
+        return res;
     }
     res + 1
 }
 
-/// Encodes value as big endian octet string for PUSHINT primitive using the format
-/// from TVM Spec A.3.1:
-///  "82lxxx — PUSHINT xxx, where 5-bit 0 ≤ l ≤ 30 determines the length n = 8l + 19
-///  of signed big-endian integer xxx. The total length of this instruction
+/// Encodes value as big endian octet string for PUSHINT primitive using the
+/// format from TVM Spec A.3.1:
+///  "82lxxx — PUSHINT xxx, where 5-bit 0 ≤ l ≤ 30 determines the length n = 8l
+/// + 19  of signed big-endian integer xxx. The total length of this instruction
 ///  is l + 4 bytes or n + 13 = 8l + 32 bits."
 pub fn to_big_endian_octet_string(value: &BigInt) -> Option<Vec<u8>> {
     let mut n = bitsize(value);
     if n > 257 {
-        return None
+        return None;
     }
     if n < 19 {
         n = 19;

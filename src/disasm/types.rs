@@ -1,48 +1,50 @@
-/*
- * Copyright 2018-2021 TON DEV SOLUTIONS LTD.
- *
- * Licensed under the SOFTWARE EVALUATION License (the "License"); you may not use
- * this file except in compliance with the License.
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific TON DEV software governing permissions and
- * limitations under the License.
- */
+// Copyright 2018-2021 TON DEV SOLUTIONS LTD.
+//
+// Licensed under the SOFTWARE EVALUATION License (the "License"); you may not
+// use this file except in compliance with the License.
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific TON DEV software governing permissions and
+// limitations under the License.
 
-use std::{collections::HashMap, slice::ChunksMut};
-use ton_types::{Cell, Result, /*Bitmask,*/ SliceData, fail};
+use std::collections::HashMap;
+use std::slice::ChunksMut;
+
+use tvm_types::{fail, Cell, Result, /* Bitmask, */ SliceData};
 
 #[derive(Debug, Default, Clone)]
 pub struct Code {
-    storage: Vec<Instruction>
+    storage: Vec<Instruction>,
 }
 
 impl Code {
     pub fn new() -> Self {
-        Self {
-            storage: Vec::new()
-        }
+        Self { storage: Vec::new() }
     }
+
     pub fn single(insn: Instruction) -> Self {
-        Self {
-            storage: vec!(insn)
-        }
+        Self { storage: vec![insn] }
     }
+
     pub fn append(&mut self, other: &mut Self) {
         self.storage.append(&mut other.storage)
     }
+
     pub fn push(&mut self, insn: Instruction) {
         self.storage.push(insn)
     }
+
     pub fn chunks_mut(&mut self, chunk_size: usize) -> ChunksMut<Instruction> {
         self.storage.chunks_mut(chunk_size)
     }
-    pub fn iter(&self) -> impl Iterator<Item = &Instruction>{
+
+    pub fn iter(&self) -> impl Iterator<Item = &Instruction> {
         self.storage.iter()
     }
-    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Instruction>{
+
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Instruction> {
         self.storage.iter_mut()
     }
 }
@@ -59,47 +61,59 @@ pub struct Instruction {
 
 impl Instruction {
     pub fn new(name: &'static str) -> Self {
-        Self { name, params: vec!(), quiet: false, comment: None, bytecode: None, refs: 0 }
+        Self { name, params: vec![], quiet: false, comment: None, bytecode: None, refs: 0 }
     }
+
     pub fn with_refs(self, refs: usize) -> Self {
         let mut clone = self;
         clone.refs = refs;
         clone
     }
+
     pub fn with_param(self, param: InstructionParameter) -> Self {
         let mut clone = self;
         clone.params.push(param);
         clone
     }
+
     pub fn set_quiet(self) -> Self {
         let mut clone = self;
         clone.quiet = true;
         clone
     }
+
     pub fn name(&self) -> &'static str {
         self.name
     }
+
     pub fn params(&self) -> &Vec<InstructionParameter> {
         &self.params
     }
+
     pub fn params_mut(&mut self) -> &mut Vec<InstructionParameter> {
         &mut self.params
     }
+
     pub fn is_quiet(&self) -> bool {
         self.quiet
     }
+
     pub fn comment(&self) -> Option<&String> {
         self.comment.as_ref()
     }
+
     pub fn set_comment(&mut self, comment: String) {
         self.comment = Some(comment)
     }
+
     pub fn bytecode(&self) -> Option<&SliceData> {
         self.bytecode.as_ref()
     }
+
     pub fn set_bytecode(&mut self, bytecode: SliceData) {
         self.bytecode = Some(bytecode);
     }
+
     pub fn refs(&self) -> usize {
         self.refs
     }
@@ -109,7 +123,7 @@ impl Instruction {
 pub enum InstructionParameter {
     BigInteger(num::BigInt),
     ControlRegister(usize),
-    //DivisionMode(DivMode),
+    // DivisionMode(DivMode),
     Integer(isize),
     Length(usize),
     LengthAndIndex(usize, usize),
@@ -161,24 +175,26 @@ impl Shape {
     pub fn any() -> Shape {
         Shape { kind: ShapeKind::Any, refs: vec![] }
     }
+
     pub fn literal(cst: &'static str) -> Shape {
         Shape { kind: ShapeKind::Literal(hex::decode(cst).expect("bad literal")), refs: vec![] }
     }
+
     pub fn var(name: &'static str) -> Shape {
         Shape { kind: ShapeKind::Var(name), refs: vec![] }
     }
+
     pub fn branch(self, node: Shape) -> Shape {
         let mut copy = self;
         copy.refs.push(node);
         copy
     }
+
     pub fn captures(&self, cell: &Cell) -> Result<HashMap<&'static str, Cell>> {
         let mut map = HashMap::new();
         let children = cell.references_count();
         match &self.kind {
-            ShapeKind::Any => {
-                return Ok(map)
-            }
+            ShapeKind::Any => return Ok(map),
             ShapeKind::Literal(data) => {
                 if cell.bit_length() != data.len() * 8 {
                     fail!("data size doesn't match")
@@ -192,7 +208,7 @@ impl Shape {
             }
             ShapeKind::Var(name) => {
                 map.insert(*name, cell.clone());
-                return Ok(map)
+                return Ok(map);
             }
         }
         for i in 0..children {

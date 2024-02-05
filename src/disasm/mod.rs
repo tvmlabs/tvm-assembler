@@ -1,23 +1,23 @@
-/*
- * Copyright 2018-2023 TON DEV SOLUTIONS LTD.
- *
- * Licensed under the SOFTWARE EVALUATION License (the "License"); you may not use
- * this file except in compliance with the License.
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific TON DEV software governing permissions and
- * limitations under the License.
- */
+// Copyright 2018-2023 TON DEV SOLUTIONS LTD.
+//
+// Licensed under the SOFTWARE EVALUATION License (the "License"); you may not
+// use this file except in compliance with the License.
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific TON DEV software governing permissions and
+// limitations under the License.
 
-use ton_types::{Result, SliceData};
+use tvm_types::Result;
+use tvm_types::SliceData;
+
 use self::loader::Loader;
 
 pub mod codedict;
+pub mod fmt;
 mod handlers;
 pub mod loader;
-pub mod fmt;
 pub mod types;
 
 pub fn disasm(slice: &mut SliceData) -> Result<String> {

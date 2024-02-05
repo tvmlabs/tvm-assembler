@@ -1,29 +1,28 @@
-/*
-* Copyright (C) 2019-2021 TON Labs. All Rights Reserved.
-*
-* Licensed under the SOFTWARE EVALUATION License (the "License"); you may not use
-* this file except in compliance with the License.
-*
-* Unless required by applicable law or agreed to in writing, software
-* distributed under the License is distributed on an "AS IS" BASIS,
-* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-* See the License for the specific TON DEV software governing permissions and
-* limitations under the License.
-*/
+// Copyright (C) 2019-2021 TON Labs. All Rights Reserved.
+//
+// Licensed under the SOFTWARE EVALUATION License (the "License"); you may not
+// use this file except in compliance with the License.
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific TON DEV software governing permissions and
+// limitations under the License.
 
+use super::errors::ToOperationParameterError;
+use super::parse::*;
+use super::CompileHandler;
+use super::CompileResult;
+use super::Engine;
+use super::EnsureParametersCountInRange;
+use super::Units;
+use crate::debug::DbgNode;
+use crate::debug::DbgPos;
 use crate::simple_commands;
-use super::{
-    Units, CompileResult, CompileHandler, Engine, EnsureParametersCountInRange,
-    errors::ToOperationParameterError,
-    parse::*,
-};
-
-use crate::debug::{DbgNode, DbgPos};
 
 // Compilation engine *********************************************************
 
 impl Engine {
-
     #[rustfmt::skip]
     simple_commands! {
         enumerate_simple_commands
@@ -846,7 +845,10 @@ impl Engine {
         VERGRTH16                            => 0xF9, 0x12
     }
 
-    fn add_commands<'a>(&mut self, iter: impl IntoIterator<Item = &'a (&'static str, CompileHandler)>) {
+    fn add_commands<'a>(
+        &mut self,
+        iter: impl IntoIterator<Item = &'a (&'static str, CompileHandler)>,
+    ) {
         // Add automatic commands
         for (command, handler) in iter {
             if self.handlers.insert(command, *handler).is_some() {
@@ -861,7 +863,7 @@ impl Engine {
 
         #[cfg(feature = "gosh")]
         self.add_commands(Self::enumerate_diff_commands());
-        
+
         #[cfg(feature = "groth")]
         self.add_commands(Self::enumerate_groth_commands());
     }
