@@ -14,9 +14,9 @@ use std::io::Write;
 use std::process::ExitCode;
 
 use clap::Parser;
-use ton_labs_assembler::DbgInfo;
-use ton_labs_assembler::Engine;
-use ton_labs_assembler::Units;
+use tvm_assembler::DbgInfo;
+use tvm_assembler::Engine;
+use tvm_assembler::Units;
 use tvm_types::Cell;
 
 #[derive(Parser)]
